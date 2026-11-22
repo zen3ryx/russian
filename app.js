@@ -1,0 +1,52 @@
+(() => {
+'use strict';
+const dataset=window.QUIZ_DATA?.tickets||[];
+const $=(s,root=document)=>root.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const key=n=>'russian_exam_2026_ticket_'+n;
+function get(n){try{return JSON.parse(localStorage.getItem(key(n))||'{}')}catch(e){return {}}}
+function put(n,obj){try{localStorage.setItem(key(n),JSON.stringify(obj))}catch(e){}}
+const tickLink=n=>'bilet-'+String(n).padStart(2,'0')+'.html';
+const countDone=()=>dataset.filter(d=>get(d.id).status==='done').length;
+const countStarted=()=>dataset.filter(d=>{let s=get(d.id);return s.status==='review'||s.status==='done'||s.checked}).length;
+let toastTimer;function toast(msg){const t=$('#toast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2200)}
+function initIndex(){
+ const grid=$('#ticket-grid'); const input=$('#search');const filters=[...document.querySelectorAll('[data-filter]')];let filter='all';
+ $('#stat-count').textContent=dataset.length;$('#stat-done').textContent=countDone();$('#stat-started').textContent=countStarted();$('#progressfill').style.width=(countDone()/dataset.length*100)+'%';
+ function draw(){const term=input.value.trim().toLowerCase();grid.innerHTML='';let num=0;
+ dataset.forEach(d=>{const st=get(d.id);let state=st.status==='done'?'done':st.status==='review'||st.checked?'started':'new';if(filter==='done'&&state!=='done'||filter==='started'&&state==='new'||filter==='new'&&state!=='new')return;if(term&&!`${d.id} ${d.category} ${d.task}`.toLowerCase().includes(term))return;
+ num++;let a=document.createElement('a');a.className='ticketcard';a.href=tickLink(d.id);a.innerHTML=`<div class="ticketcard-head"><span class="ticketnum">БИЛЕТ ${String(d.id).padStart(2,'0')}</span><span class="state ${state==='done'?'done':state==='started'?'started':''}">${state==='done'?'Пройден':state==='started'?'В процессе':'Не начат'}</span></div><div class="ticketname">${esc(d.category)}</div><div class="ticketbottom"><span>${d.questions.length} тестовых вопросов${d.note?' · Уточнение к источнику':''}</span><span class="arrow">↗</span></div>`;grid.appendChild(a);
+ });$('#visible-count').textContent=num;if(!num)grid.innerHTML='<div class="empty">По вашему запросу билеты не найдены.</div>';
+ }
+ input.addEventListener('input',draw);filters.forEach(f=>f.addEventListener('click',()=>{filter=f.dataset.filter;filters.forEach(el=>{el.classList.toggle('active',el===f);el.setAttribute('aria-pressed',String(el===f))});draw()}));draw();
+}
+function initTicket(){
+ const n=Number(document.body.dataset.ticket);const d=dataset.find(t=>t.id===n); if(!d){$('#ticket-view').textContent='Билет не найден.';return}
+ document.title=`Билет № ${n} — Русский язык | Тренажёр`;
+ const st=get(n);let choices=st.choices&&typeof st.choices==='object'?st.choices:{};let checked=!!st.checked;
+ const c=$('#ticket-view');const notes=d.note?`<div class="warning">⚠ ${esc(d.note)}</div>`:'';
+ const original=d.source.map(s=>`<p>«${esc(s)}»</p>`).join('');
+ c.innerHTML=`<div class="tickethead"><div class="eyebrow">ПИСЬМЕННОЕ ЗАДАНИЕ · БИЛЕТ ${String(n).padStart(2,'0')} / 25</div><h1>${esc(d.category)}</h1><div class="pills"><span class="pill">Билет № ${n}</span><span class="pill alt">${d.questions.length} тестовых вопросов</span></div><div class="line"><div class="fill" id="ticket-fill" style="width:${checked?'100':'0'}%"></div></div></div>
+ <section class="panel" aria-label="Оригинальное задание"><div class="sectionlabel">01 / ЗАДАНИЕ ИЗ PDF</div><p class="task">${esc(d.task)}</p><div class="quote">${original}</div>${notes}<p class="tiny">Формулировки и примеры перенесены из приложенного PDF. Ответы и разборы ниже — учебные, а не официальный ключ преподавателя.</p></section>
+ <section class="panel" aria-label="Выбор правильных ответов"><div class="sectionlabel">02 / ВЫБЕРИТЕ ВАРИАНТЫ ОТВЕТА</div><h2>Проверьте понимание правила</h2><p class="tip">Выберите по одному ответу в каждом вопросе. Правильные варианты появятся только после проверки.</p><div id="questions"></div></section>
+ <section class="panel"><div class="sectionlabel">03 / САМОСТОЯТЕЛЬНАЯ РЕДАКЦИЯ</div><h2>Напишите свой ответ</h2><p class="tip">Выполните исходное письменное задание своими словами. После проверки сравните вашу версию с образцом. Свободный текст не оценивается автоматически.</p><label for="written" class="tiny">Ваш исправленный текст / объяснение ошибки</label><textarea id="written" class="editor" spellcheck="true" placeholder="Напишите здесь исправленный вариант и краткое объяснение..."></textarea><div class="toolbar"><button id="check" class="btn">Проверить ответы ↗</button><button id="clear" class="btn secondary">Очистить выбор</button></div><div class="statusbar"><span id="answered">Отвечено: 0 / ${d.questions.length}</span><span>Результат сохраняется на этом устройстве</span></div></section>
+ <div id="result-area" aria-live="polite"></div><nav class="ticketnav"><a class="btn secondary" href="${n>1?tickLink(n-1):'index.html'}">← ${n>1?'Предыдущий билет':'Все билеты'}</a><a class="btn secondary" href="${n<25?tickLink(n+1):'index.html'}">${n<25?'Следующий билет':'Все билеты'} →</a></nav>`;
+ $('#written').value=st.written||'';
+ const qs=$('#questions');d.questions.forEach((q,i)=>{const area=document.createElement('div');area.className='q-card';area.dataset.q=i;area.innerHTML=`<div class="qno">ВОПРОС ${String(i+1).padStart(2,'0')}</div><div class="q-title">${esc(q.prompt)}</div><div class="answers">${q.options.map((o,j)=>`<label class="option" data-choice="${j}"><input type="radio" name="q${i}" value="${j}" ${Number(choices[i])===j&&choices[i]!==undefined?'checked':''} ${checked?'disabled':''}><span><b>${String.fromCharCode(65+j)}.</b> ${esc(o)}</span></label>`).join('')}</div><div class="answer-feedback" id="feed-${i}" style="display:none"></div>`;qs.appendChild(area)});
+ const count=()=>Object.keys(choices).filter(k=>choices[k]!==undefined).length;
+ const update=()=>{$('#answered').textContent=`Отвечено: ${count()} / ${d.questions.length}`;$('#ticket-fill').style.width=(count()/d.questions.length*100)+'%';$('#check').disabled=checked||count()<d.questions.length;};
+ qs.addEventListener('change',ev=>{if(!ev.target.matches('input[type=radio]')||checked)return;let i=Number(ev.target.name.slice(1));choices[i]=Number(ev.target.value);put(n,{...get(n),choices,written:$('#written').value});update()});
+ $('#written').addEventListener('input',()=>put(n,{...get(n),choices,written:$('#written').value}));
+ function showResults(){let score=0;d.questions.forEach((q,i)=>{const sel=choices[i];if(sel===q.answer)score++;let el=$(`[data-q="${i}"]`);el.querySelectorAll('.option').forEach((opt,j)=>{opt.classList.toggle('istrue',j===q.answer);opt.classList.toggle('isfalse',j===sel&&sel!==q.answer);opt.querySelector('input').disabled=true});let f=$('#feed-'+i);f.style.display='block';f.className='answer-feedback '+(sel===q.answer?'correct':'wrong');f.innerHTML=`<strong>${sel===q.answer?'✓ Верно':`✕ Неверно. Правильный ответ: ${String.fromCharCode(65+q.answer)}`}</strong>${esc(q.explanation)}`});
+ let r=$('#result-area');r.innerHTML=`<section class="result" id="results"><div class="sectionlabel">04 / РЕЗУЛЬТАТ И РАЗБОР</div><div class="resultbar"><div><div class="bigscore">${score} / ${d.questions.length}</div><div class="muted">${score===d.questions.length?'Все тестовые ответы верны':score>=Math.ceil(d.questions.length*.7)?'Хороший результат, изучите замечания':'Повторите ошибки и попробуйте ещё раз'}</div></div><span class="pill">${Math.round(100*score/d.questions.length)}%</span></div><div class="line"><div class="fill" style="width:${score/d.questions.length*100}%"></div></div><h3 style="margin-top:24px">Образец ответа</h3><div class="model">${esc(d.model)}</div><h3 style="margin-top:20px">Почему так?</h3><p class="explain">${esc(d.explanation)}</p><div class="callout">Образец ответа — возможная редакция. Если ваш вариант передаёт смысл, соблюдает норму и правильно объясняет ошибку, он тоже может быть верным.</div><div class="result-actions"><button class="btn" id="mark-done">✓ Сравнил с образцом — пройдено</button><button class="btn secondary" id="mark-review">↻ Нужно повторить</button><button class="btn ghost" id="retry">Попробовать снова</button></div></section>`;
+ $('#mark-done').addEventListener('click',()=>{put(n,{...get(n),choices,written:$('#written').value,checked:true,status:'done',score});toast('Билет отмечен как пройден ✓');updateSide()});
+ $('#mark-review').addEventListener('click',()=>{put(n,{...get(n),choices,written:$('#written').value,checked:true,status:'review',score});toast('Билет добавлен к повторению');updateSide()});
+ $('#retry').addEventListener('click',()=>{checked=false;choices={};put(n,{...get(n),choices,checked:false,status:'review'});window.location.reload()});
+ }
+ $('#check').addEventListener('click',()=>{if(checked||count()<d.questions.length)return;checked=true;let score=d.questions.filter((q,i)=>q.answer===choices[i]).length;put(n,{...get(n),choices,written:$('#written').value,checked:true,status:get(n).status==='done'?'done':'review',score});showResults();update();$('#results').scrollIntoView({behavior:'smooth',block:'start'});updateSide()});
+ $('#clear').addEventListener('click',()=>{if(checked){toast('Для сброса используйте «Попробовать снова» ниже.');return;}choices={};qs.querySelectorAll('input[type=radio]').forEach(x=>x.checked=false);put(n,{...get(n),choices});update()});
+ function updateSide(){const side=$('#side-mini');if(!side)return;side.innerHTML=dataset.map(t=>`<a class="mini ${t.id===n?'active':''} ${get(t.id).status==='done'?'done':''}" href="${tickLink(t.id)}" aria-label="Билет ${t.id}">${t.id}</a>`).join('');$('#side-done').textContent=`Пройдено ${countDone()} из 25`;}
+ updateSide();update();if(checked){showResults();$('#check').disabled=true;}
+}
+document.addEventListener('DOMContentLoaded',()=>{if(!dataset.length){document.body.innerHTML='<h1>Не удалось загрузить задания. Проверьте наличие data.js.</h1>';return}if(document.body.dataset.page==='index')initIndex();else initTicket()});
+})();
